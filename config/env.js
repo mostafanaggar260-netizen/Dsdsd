@@ -1,4 +1,3 @@
-// Loads and validates all environment variables in one place.
 require('dotenv').config();
 
 const env = {
@@ -22,6 +21,11 @@ const env = {
   LOG_CHANNEL_ROLE_CHANNEL_ID: process.env.LOG_CHANNEL_ROLE_CHANNEL_ID,
   LOG_TICKET_CHANNEL_ID: process.env.LOG_TICKET_CHANNEL_ID,
   LOG_VOICE_CHANNEL_ID: process.env.LOG_VOICE_CHANNEL_ID,
+
+  // إعدادات الدعم الصوتي
+  SUPPORT_VOICE_CHANNEL_ID: process.env.SUPPORT_VOICE_CHANNEL_ID,
+  SUPPORT_NOTIFY_CHANNEL_ID: process.env.SUPPORT_NOTIFY_CHANNEL_ID,
+  SUPPORT_NOTIFY_ROLE_ID: process.env.SUPPORT_NOTIFY_ROLE_ID,
 
   SERVER_BRAND_NAME: process.env.SERVER_BRAND_NAME || 'ازيكس',
 };
