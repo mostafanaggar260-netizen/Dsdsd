@@ -1,5 +1,3 @@
-// Entry point — this is the ONLY file Orihost's "Main file" setting
-// needs to point at. Everything else is required in from here.
 const { Client, GatewayIntentBits, Partials, Collection } = require('discord.js');
 const env = require('./config/env');
 
@@ -25,6 +23,7 @@ const activityCommands = require('./commands/activities');
 const communityCommands = require('./commands/community');
 const logsSetupCommands = require('./commands/logsSetup');
 const eventCommands = require('./commands/event');
+const voiceCommands = require('./commands/voice');
 
 const allCommands = [
   ...moderationCommands,
@@ -35,6 +34,7 @@ const allCommands = [
   ...communityCommands,
   ...logsSetupCommands,
   ...eventCommands,
+  ...voiceCommands,
 ];
 const commands = new Collection();
 for (const cmd of allCommands) {
