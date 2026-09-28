@@ -1,0 +1,13 @@
+{
+  "name": "aze1x-welcome-bot",
+  "version": "2.0.0",
+  "description": "Discord bot - welcome, moderation, tickets with database + transcripts, reaction roles, logging",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js"
+  },
+  "dependencies": {
+    "discord.js": "^14.16.3",
+    "dotenv": "^16.4.5"
+  }
+}
