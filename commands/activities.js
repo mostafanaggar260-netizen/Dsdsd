@@ -72,7 +72,7 @@ module.exports = [
         }
       }
 
-      const activity = activities.createActivity({
+      const activity = await activities.createActivity({
         title,
         description,
         type,
@@ -93,7 +93,7 @@ module.exports = [
         components: [row],
       });
 
-      activities.setMessageId(activity.id, message.id);
+      await activities.setMessageId(activity.id, message.id);
 
       return interaction.reply({
         content: `✅ تم إنشاء الفعالية في ${announceChannel.toString()}${discordEventId ? ' + فعالية ديسكورد رسمية' : ''}`,
@@ -104,7 +104,7 @@ module.exports = [
   {
     data: new SlashCommandBuilder().setName('event-list').setDescription('اعرض الفعاليات الجاية'),
     async execute(interaction) {
-      const upcoming = activities.listUpcoming();
+      const upcoming = await activities.listUpcoming();
       if (upcoming.length === 0) {
         return interaction.reply({ content: '📭 مفيش فعاليات قادمة حالياً.', ephemeral: true });
       }
@@ -129,7 +129,7 @@ module.exports = [
       .addIntegerOption((opt) => opt.setName('id').setDescription('رقم الفعالية (شوفه من /event-list)').setRequired(true)),
     async execute(interaction) {
       const id = interaction.options.getInteger('id', true);
-      const activity = activities.getActivity(id);
+      const activity = await activities.getActivity(id);
       if (!activity) return interaction.reply({ content: '❌ مفيش فعالية بهذا الرقم.', ephemeral: true });
 
       const isHost = activity.hostId === interaction.user.id;
@@ -138,7 +138,7 @@ module.exports = [
         return interaction.reply({ content: '❌ بس منظم الفعالية أو الأدمن يقدر يلغيها.', ephemeral: true });
       }
 
-      activities.cancelActivity(id);
+      await activities.cancelActivity(id);
 
       if (activity.discordEventId) {
         await interaction.guild.scheduledEvents.delete(activity.discordEventId).catch(() => {});
@@ -148,7 +148,7 @@ module.exports = [
       if (channel && activity.messageId) {
         const message = await channel.messages.fetch(activity.messageId).catch(() => null);
         if (message) {
-          const updated = activities.getActivity(id);
+          const updated = await activities.getActivity(id);
           await message.edit({ embeds: [buildActivityEmbed(updated)], components: [] }).catch(() => {});
         }
       }
