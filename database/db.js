@@ -1,26 +1,52 @@
-// Tiny JSON-file database. No native modules to compile, so it works on
-// any free host (Orihost included) with nothing extra to install.
-// Everything is stored under /data as plain .json files.
-const fs = require('fs');
-const path = require('path');
+// Cloud database using MongoDB. Replaces the local JSON file system.
+const { MongoClient } = require('mongodb');
 
-const DATA_DIR = path.join(__dirname, '..', 'data');
-if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
+const uri = process.env.MONGODB_URI;
+if (!uri) {
+  console.error('❌ Missing MONGODB_URI in environment variables.');
+  process.exit(1);
+}
 
-function loadJSON(fileName, fallback) {
-  const filePath = path.join(DATA_DIR, fileName);
-  if (!fs.existsSync(filePath)) return fallback;
+const client = new MongoClient(uri);
+let db;
+
+async function connectDB() {
+  if (db) return db;
   try {
-    return JSON.parse(fs.readFileSync(filePath, 'utf8'));
+    await client.connect();
+    db = client.db('discord_bot');
+    console.log('✅ Connected to MongoDB');
+    return db;
+  } catch (err) {
+    console.error('❌ Failed to connect to MongoDB:', err);
+    process.exit(1);
+  }
+}
+
+async function loadJSON(fileName, fallback) {
+  try {
+    const database = await connectDB();
+    const collection = database.collection('json_store');
+    const doc = await collection.findOne({ _id: fileName });
+    return doc ? doc.data : fallback;
   } catch (err) {
     console.error(`⚠️ Failed to read ${fileName}, using fallback data.`, err);
     return fallback;
   }
 }
 
-function saveJSON(fileName, data) {
-  const filePath = path.join(DATA_DIR, fileName);
-  fs.writeFileSync(filePath, JSON.stringify(data, null, 2));
+async function saveJSON(fileName, data) {
+  try {
+    const database = await connectDB();
+    const collection = database.collection('json_store');
+    await collection.updateOne(
+      { _id: fileName },
+      { $set: { data } },
+      { upsert: true }
+    );
+  } catch (err) {
+    console.error(`⚠️ Failed to save ${fileName} to MongoDB.`, err);
+  }
 }
 
-module.exports = { DATA_DIR, loadJSON, saveJSON };
+module.exports = { loadJSON, saveJSON };
