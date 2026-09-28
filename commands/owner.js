@@ -1,11 +1,3 @@
-// Lets your real OWNER_ID grant trusted access to other people, and lets
-// trusted people grant themselves (or someone else) the "owner role"
-// configured as OWNER_ROLE_ID in .env.
-//
-// IMPORTANT LIMIT (Discord rule, not something code can bypass): the bot
-// can only assign roles that sit BELOW its own highest role in the
-// server's role list. Drag the bot's role above OWNER_ROLE_ID in
-// Server Settings -> Roles, or /grant-owner will fail with a permission error.
 const { SlashCommandBuilder, EmbedBuilder, PermissionFlagsBits } = require('discord.js');
 const env = require('../config/env');
 const owners = require('../database/owners');
@@ -32,10 +24,10 @@ module.exports = [
       const sub = interaction.options.getSubcommand();
 
       if (sub === 'list') {
-        if (!owners.isTrusted(interaction.user.id)) {
+        if (!(await owners.isTrusted(interaction.user.id))) {
           return interaction.reply({ content: '❌ ليس لديك صلاحية استخدام هذا الأمر.', ephemeral: true });
         }
-        const ids = owners.listTrusted();
+        const ids = await owners.listTrusted();
         const embed = new EmbedBuilder()
           .setColor(0x5865f2)
           .setTitle('👑 أصحاب الصلاحية الموثوقين')
@@ -47,20 +39,19 @@ module.exports = [
         return interaction.reply({ embeds: [embed], ephemeral: true });
       }
 
-      // add / remove — only the real owner (from .env) can change this list.
-      if (!owners.isRealOwner(interaction.user.id)) {
+      if (!(await owners.isRealOwner(interaction.user.id))) {
         return interaction.reply({ content: '❌ هذا الأمر مخصص لصاحب البوت الأساسي فقط.', ephemeral: true });
       }
 
       const target = interaction.options.getUser('user', true);
 
       if (sub === 'add') {
-        owners.addTrusted(target.id);
+        await owners.addTrusted(target.id);
         return interaction.reply({ content: `✅ تم منح ${target.tag} صلاحية موثوقة.`, ephemeral: true });
       }
 
       if (sub === 'remove') {
-        owners.removeTrusted(target.id);
+        await owners.removeTrusted(target.id);
         return interaction.reply({ content: `✅ تم إزالة ${target.tag} من قائمة الموثوقين.`, ephemeral: true });
       }
     },
@@ -71,7 +62,7 @@ module.exports = [
       .setDescription('Grant the configured owner role to yourself or someone else (trusted only)')
       .addUserOption((opt) => opt.setName('user').setDescription('Who to grant it to (defaults to yourself)')),
     async execute(interaction) {
-      if (!owners.isTrusted(interaction.user.id)) {
+      if (!(await owners.isTrusted(interaction.user.id))) {
         return interaction.reply({ content: '❌ ليس لديك صلاحية استخدام هذا الأمر.', ephemeral: true });
       }
 
