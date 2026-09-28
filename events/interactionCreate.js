@@ -2,6 +2,7 @@ const { Events } = require('discord.js');
 const { handleTicketButton, handleTicketApplySelect } = require('../handlers/ticketButtons');
 const { handleActivityButton } = require('../handlers/activityButtons');
 const { handleEventButton, handleEventModalSubmit } = require('../handlers/eventButtons');
+const { handleSupportPull } = require('../handlers/supportVoice');
 
 module.exports = function registerInteractionCreate(client, commands) {
   client.on(Events.InteractionCreate, async (interaction) => {
@@ -27,6 +28,8 @@ module.exports = function registerInteractionCreate(client, commands) {
           await handleActivityButton(interaction);
         } else if (interaction.customId.startsWith('event_')) {
           await handleEventButton(interaction);
+        } else if (interaction.customId.startsWith('support_pull_')) {
+          await handleSupportPull(interaction);
         } else {
           await handleTicketButton(interaction);
         }
