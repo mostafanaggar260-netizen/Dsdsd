@@ -1,13 +1,3 @@
-// On startup (and via the admin /setup_role_logs command), makes sure the
-// "role added" / "role removed" log channels exist — creating them itself
-// if they don't, instead of requiring you to make them by hand and paste
-// IDs into .env.
-//
-// Priority order per channel:
-//   1. The ID already in .env, if that channel still exists.
-//   2. An ID this same function created on a previous run (remembered in
-//      data/auto-log-channels.json), if that channel still exists.
-//   3. Otherwise, create a brand new channel and remember its ID.
 const { ChannelType, OverwriteType, PermissionFlagsBits } = require('discord.js');
 const env = require('../config/env');
 const { getStoredChannelId, setStoredChannelId } = require('../database/logChannels');
@@ -21,7 +11,6 @@ async function ensureLogChannels(client, guildOverride) {
   const guild = guildOverride || client.guilds.cache.first();
   if (!guild) return [];
 
-  // Staff role gets to see the log channels; @everyone is denied.
   const staffRoleId = env.TICKET_SUPPORT_ROLE_ID || '';
   const results = [];
 
@@ -29,13 +18,13 @@ async function ensureLogChannels(client, guildOverride) {
     let existing = env[envKey] ? guild.channels.cache.get(env[envKey]) : null;
 
     if (!existing) {
-      const storedId = getStoredChannelId(storeKey);
+      const storedId = await getStoredChannelId(storeKey);
       existing = storedId ? guild.channels.cache.get(storedId) : null;
     }
 
     if (existing) {
-      env[envKey] = existing.id; // keep the rest of the bot in sync
-      setStoredChannelId(storeKey, existing.id);
+      env[envKey] = existing.id;
+      await setStoredChannelId(storeKey, existing.id);
       results.push({ name, channel: existing, created: false });
       continue;
     }
@@ -58,7 +47,7 @@ async function ensureLogChannels(client, guildOverride) {
         ],
       });
       env[envKey] = created.id;
-      setStoredChannelId(storeKey, created.id);
+      await setStoredChannelId(storeKey, created.id);
       console.log(`✅ Auto-created log channel #${name} (${created.id})`);
       results.push({ name, channel: created, created: true });
     } catch (err) {
