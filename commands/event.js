@@ -1,12 +1,3 @@
-// Slash commands for the stage-event feature.
-// /event_config      — (admin only) set the event-team role, the "فعاليه"
-//                       participant role, and an optional separator image.
-// /event_start        — sets everything up, posts the staff control panel
-//                        AND the public join/leave panel (buttons only —
-//                        joining/leaving is done from the panel, not a
-//                        slash command).
-// /event_leaderboard  — shows the current standings any time.
-// /event_end          — posts the confirm button that wraps the whole event up.
 const fs = require('fs');
 const path = require('path');
 const {
@@ -33,8 +24,6 @@ const {
 
 const DATA_DIR = path.join(__dirname, '..', 'data');
 
-// Downloads the attachment once and saves it to disk so it can be re-sent
-// as a plain image attachment every round (not a link, not an embed).
 async function downloadSeparatorImage(attachment) {
   const res = await fetch(attachment.url);
   const buffer = Buffer.from(await res.arrayBuffer());
@@ -60,7 +49,7 @@ module.exports = [
       const separatorImage = interaction.options.getAttachment('separator_image');
 
       if (!teamRole && !participantRole && !separatorImage) {
-        const settings = eventSettings.getSettings();
+        const settings = await eventSettings.getSettings();
         const embed = new EmbedBuilder()
           .setColor(0x5865f2)
           .setTitle('⚙️ إعدادات الفعاليات الحالية')
@@ -76,8 +65,8 @@ module.exports = [
 
       await interaction.deferReply({ ephemeral: true });
 
-      if (teamRole) eventSettings.setTeamRole(teamRole.id);
-      if (participantRole) eventSettings.setParticipantRole(participantRole.id);
+      if (teamRole) await eventSettings.setTeamRole(teamRole.id);
+      if (participantRole) await eventSettings.setParticipantRole(participantRole.id);
 
       const lines = [];
       if (teamRole) lines.push(`🛡️ رول فريق الفعاليات بقى ${teamRole.toString()}`);
@@ -86,7 +75,7 @@ module.exports = [
       if (separatorImage) {
         try {
           const filePath = await downloadSeparatorImage(separatorImage);
-          eventSettings.setSeparatorImagePath(filePath);
+          await eventSettings.setSeparatorImagePath(filePath);
           lines.push('🖼️ اتحطت صورة الفاصل الجديدة');
         } catch (err) {
           console.error('Failed to download separator image:', err);
@@ -122,14 +111,14 @@ module.exports = [
           .addChannelTypes(ChannelType.GuildText)
       ),
     async execute(interaction) {
-      if (!isEventStaff(interaction)) {
+      if (!(await isEventStaff(interaction))) {
         return interaction.reply({ content: '❌ الأمر ده مخصص لفريق إدارة الفعاليات فقط.', ephemeral: true });
       }
-      if (events.isActive()) {
+      if (await events.isActive()) {
         return interaction.reply({ content: '⚠️ يوجد فعالية نشطة بالفعل. أنهِها أولاً بـ `/event_end`.', ephemeral: true });
       }
 
-      const settings = eventSettings.getSettings();
+      const settings = await eventSettings.getSettings();
       if (!settings.teamRoleId || !settings.participantRoleId) {
         return interaction.reply({
           content: '❌ محتاج تظبط رول فريق الفعاليات ورول الفعالية الأول بـ `/event_config`.',
@@ -145,14 +134,11 @@ module.exports = [
 
       const guild = interaction.guild;
 
-      // Set up the channel so ONLY the participant role's SendMessages gets
-      // toggled per round — @everyone else is blocked by default, and the
-      // event team can always type (question announcements, etc).
       await stageChannel.permissionOverwrites.edit(guild.roles.everyone, { SendMessages: false }, { reason: 'بدء فعالية' }).catch(() => {});
       await stageChannel.permissionOverwrites.edit(settings.teamRoleId, { SendMessages: true }, { reason: 'بدء فعالية' }).catch(() => {});
       await stageChannel.permissionOverwrites.edit(settings.participantRoleId, { SendMessages: false }, { reason: 'بدء فعالية' }).catch(() => {});
 
-      const state = events.startEvent({
+      const state = await events.startEvent({
         guildId: guild.id,
         stageChannelId: stageChannel.id,
         announceChannelId: announceChannel.id,
@@ -165,14 +151,14 @@ module.exports = [
         embeds: [buildControlPanelEmbed(state)],
         components: [buildControlPanelButtons(false)],
       });
-      events.setControlMessage(interaction.channelId, panelMsg.id);
+      await events.setControlMessage(interaction.channelId, panelMsg.id);
 
       const joinMsg = await joinChannel.send({
         content: '@everyone',
         embeds: [buildJoinPanelEmbed()],
         components: [buildJoinPanelButtons()],
       });
-      events.setJoinMessage(joinChannel.id, joinMsg.id);
+      await events.setJoinMessage(joinChannel.id, joinMsg.id);
 
       return interaction.editReply({
         content: `✅ بدأت الفعالية!\nشات الفعالية: ${stageChannel.toString()}\nزرار الدخول: ${joinChannel.toString()}`,
@@ -182,7 +168,7 @@ module.exports = [
   {
     data: new SlashCommandBuilder().setName('event_leaderboard').setDescription('عرض ترتيب الفعالية الحالية'),
     async execute(interaction) {
-      const leaderboard = events.getLeaderboardSorted();
+      const leaderboard = await events.getLeaderboardSorted();
       if (leaderboard.length === 0) {
         return interaction.reply({ content: '📭 لا توجد نقاط مسجلة بعد.', ephemeral: true });
       }
@@ -192,10 +178,10 @@ module.exports = [
   {
     data: new SlashCommandBuilder().setName('event_end').setDescription('إنهاء الفعالية الحالية'),
     async execute(interaction) {
-      if (!isEventStaff(interaction)) {
+      if (!(await isEventStaff(interaction))) {
         return interaction.reply({ content: '❌ الأمر ده مخصص لفريق إدارة الفعاليات فقط.', ephemeral: true });
       }
-      if (!events.isActive()) {
+      if (!(await events.isActive())) {
         return interaction.reply({ content: '❌ لا توجد فعالية نشطة حالياً.', ephemeral: true });
       }
       const row = new ActionRowBuilder().addComponents(
@@ -207,10 +193,10 @@ module.exports = [
   {
     data: new SlashCommandBuilder().setName('event_participants').setDescription('عرض قائمة المشتركين في الفعالية الحالية'),
     async execute(interaction) {
-      if (!events.isActive()) {
+      if (!(await events.isActive())) {
         return interaction.reply({ content: '❌ لا توجد فعالية نشطة حالياً.', ephemeral: true });
       }
-      const participants = events.getAllParticipants();
+      const participants = await events.getAllParticipants();
       const ids = Object.keys(participants);
       if (ids.length === 0) {
         return interaction.reply({ content: '📭 لا يوجد مشتركين مسجلين لسه.', ephemeral: true });
@@ -229,10 +215,10 @@ module.exports = [
       .setDescription('ضيف شخص للفعالية يدويًا (فريق الفعاليات فقط)')
       .addUserOption((opt) => opt.setName('member').setDescription('الشخص اللي عايز تضيفه للفعالية').setRequired(true)),
     async execute(interaction) {
-      if (!isEventStaff(interaction)) {
+      if (!(await isEventStaff(interaction))) {
         return interaction.reply({ content: '❌ الأمر ده مخصص لفريق إدارة الفعاليات فقط.', ephemeral: true });
       }
-      if (!events.isActive()) {
+      if (!(await events.isActive())) {
         return interaction.reply({ content: '❌ لا توجد فعالية نشطة حالياً.', ephemeral: true });
       }
       const targetUser = interaction.options.getUser('member', true);
@@ -259,10 +245,10 @@ module.exports = [
       .setDescription('اطرد شخص من الفعالية (فريق الفعاليات فقط)')
       .addUserOption((opt) => opt.setName('member').setDescription('الشخص اللي عايز تطرده من الفعالية').setRequired(true)),
     async execute(interaction) {
-      if (!isEventStaff(interaction)) {
+      if (!(await isEventStaff(interaction))) {
         return interaction.reply({ content: '❌ الأمر ده مخصص لفريق إدارة الفعاليات فقط.', ephemeral: true });
       }
-      if (!events.isActive()) {
+      if (!(await events.isActive())) {
         return interaction.reply({ content: '❌ لا توجد فعالية نشطة حالياً.', ephemeral: true });
       }
       const targetUser = interaction.options.getUser('member', true);
@@ -290,13 +276,13 @@ module.exports = [
       .addUserOption((opt) => opt.setName('member').setDescription('الشخص اللي عايز تضيفله نقاط').setRequired(true))
       .addIntegerOption((opt) => opt.setName('amount').setDescription('عدد النقاط (افتراضيًا 1)').setMinValue(1)),
     async execute(interaction) {
-      if (!isEventStaff(interaction)) {
+      if (!(await isEventStaff(interaction))) {
         return interaction.reply({ content: '❌ الأمر ده مخصص لفريق إدارة الفعاليات فقط.', ephemeral: true });
       }
       const targetUser = interaction.options.getUser('member', true);
       const amount = interaction.options.getInteger('amount') ?? 1;
 
-      const entry = events.adjustPoints(targetUser.id, targetUser.tag, amount);
+      const entry = await events.adjustPoints(targetUser.id, targetUser.tag, amount);
       return interaction.reply({
         content: `✅ اتضاف ${amount} نقطة لـ ${targetUser.toString()}. رصيده دلوقتي: ${entry.points} نقطة.`,
       });
@@ -309,13 +295,13 @@ module.exports = [
       .addUserOption((opt) => opt.setName('member').setDescription('الشخص اللي عايز تشيله نقاط').setRequired(true))
       .addIntegerOption((opt) => opt.setName('amount').setDescription('عدد النقاط (افتراضيًا 1)').setMinValue(1)),
     async execute(interaction) {
-      if (!isEventStaff(interaction)) {
+      if (!(await isEventStaff(interaction))) {
         return interaction.reply({ content: '❌ الأمر ده مخصص لفريق إدارة الفعاليات فقط.', ephemeral: true });
       }
       const targetUser = interaction.options.getUser('member', true);
       const amount = interaction.options.getInteger('amount') ?? 1;
 
-      const entry = events.adjustPoints(targetUser.id, targetUser.tag, -amount);
+      const entry = await events.adjustPoints(targetUser.id, targetUser.tag, -amount);
       return interaction.reply({
         content: `✅ اتشال ${amount} نقطة من ${targetUser.toString()}. رصيده دلوقتي: ${entry.points} نقطة.`,
       });
