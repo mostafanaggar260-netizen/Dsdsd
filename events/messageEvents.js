@@ -13,12 +13,10 @@ module.exports = function registerMessageEvents(client) {
     await logMessageEdit(client, oldMsg, newMsg);
   });
 
-  // Every message sent inside an open ticket channel gets appended to
-  // that ticket's transcript .txt file (see utils/transcript.js).
   client.on(Events.MessageCreate, async (message) => {
     if (!message.guild) return;
 
-    const ticket = tickets.getTicketByChannel(message.channelId);
+    const ticket = await tickets.getTicketByChannel(message.channelId);
     if (ticket && ticket.status === 'open') {
       transcript.appendMessage(message.channelId, {
         authorTag: message.author.tag,
