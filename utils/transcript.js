@@ -1,9 +1,9 @@
-// Creates one .txt log file per ticket under data/transcripts/<channelId>.txt.
-// Every message sent in a ticket channel gets appended to that file, so
-// when the ticket closes you have a full written record of what happened.
 const fs = require('fs');
 const path = require('path');
-const { DATA_DIR } = require('../database/db');
+
+// Define DATA_DIR directly here so it never depends on another file
+const DATA_DIR = path.join(__dirname, '..', 'data');
+if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
 
 const TRANSCRIPT_DIR = path.join(DATA_DIR, 'transcripts');
 if (!fs.existsSync(TRANSCRIPT_DIR)) fs.mkdirSync(TRANSCRIPT_DIR, { recursive: true });
