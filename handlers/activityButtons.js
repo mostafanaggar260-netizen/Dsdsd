@@ -1,4 +1,3 @@
-// Handles the "أنا موجود ✅" RSVP button on an activity announcement.
 const { EmbedBuilder } = require('discord.js');
 const activities = require('../database/activities');
 
@@ -31,13 +30,9 @@ async function handleActivityButton(interaction) {
 
   const activityId = Number(customId.replace('activity_rsvp_', ''));
 
-  // Acknowledge the click FIRST, before touching the database or building
-  // the embed. Discord only allows 3 seconds to respond to a button click —
-  // deferring immediately means even a slow disk read/write on a shared
-  // host can't blow past that window and cause "didn't respond in time".
   await interaction.deferUpdate().catch((err) => console.error('Failed to defer activity button:', err));
 
-  const activity = activities.getActivity(activityId);
+  const activity = await activities.getActivity(activityId);
 
   if (!activity) {
     return interaction.followUp({ content: '❌ هذه الفعالية لم تعد موجودة.', ephemeral: true }).catch(() => {});
@@ -49,7 +44,7 @@ async function handleActivityButton(interaction) {
     return interaction.followUp({ content: '⏰ هذه الفعالية بدأت أو انتهت بالفعل.', ephemeral: true }).catch(() => {});
   }
 
-  const updated = activities.toggleAttendee(activityId, interaction.user.id);
+  const updated = await activities.toggleAttendee(activityId, interaction.user.id);
   const joined = updated.attendees.includes(interaction.user.id);
 
   await interaction.editReply({ embeds: [buildActivityEmbed(updated)] }).catch((err) => console.error('Failed to edit activity embed:', err));
