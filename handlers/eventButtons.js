@@ -1,8 +1,3 @@
-// Everything for the "stage event" feature: the staff control panel
-// (start round / break-resume), the public join/leave panel, the
-// round-start modal, checking incoming stage-chat messages against the
-// current round's accepted answers + the profanity filter, and wrapping up
-// the event (restore everyone's roles, announce the winner).
 const fs = require('fs');
 const {
   EmbedBuilder,
@@ -20,14 +15,10 @@ const eventSettings = require('../database/eventSettings');
 const { parseAnswers, isCorrectAnswer } = require('../utils/answerMatch');
 const { containsProfanity } = require('../utils/profanityFilter');
 
-// Fallback text separator, only used if no image separator has been set
-// with /event_config separator_image.
 const TEXT_SEPARATOR = '▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬';
 
-// Sent as a plain image attachment (not an embed) so it shows up like a
-// normal photo message, exactly like uploading it yourself.
 async function sendSeparator(channel) {
-  const { separatorImagePath } = eventSettings.getSettings();
+  const { separatorImagePath } = await eventSettings.getSettings();
   if (separatorImagePath && fs.existsSync(separatorImagePath)) {
     const attachment = new AttachmentBuilder(separatorImagePath);
     await channel.send({ files: [attachment] }).catch(() => {});
@@ -36,20 +27,14 @@ async function sendSeparator(channel) {
   }
 }
 
-// ── Permission helpers ─────────────────────────────────────────────
-// Event staff = server Administrators, OR whoever holds the role configured
-// with /event_config team_role. Checked against the role snapshotted when
-// the event started (falls back to the live setting if there's no active
-// event yet, e.g. so staff can still see errors before /event_start).
-function isEventStaff(interaction) {
+async function isEventStaff(interaction) {
   if (interaction.memberPermissions?.has(PermissionFlagsBits.Administrator)) return true;
-  const state = events.getState();
-  const teamRoleId = state.active ? state.teamRoleId : eventSettings.getSettings().teamRoleId;
+  const state = await events.getState();
+  const teamRoleId = state.active ? state.teamRoleId : (await eventSettings.getSettings()).teamRoleId;
   if (!teamRoleId) return false;
   return interaction.member?.roles?.cache?.has(teamRoleId) ?? false;
 }
 
-// ── Staff control panel (posted once, by /event_start) ─────────────
 function buildControlPanelEmbed(state) {
   const status = state.paused ? '⏸️ استراحة' : state.roundActive ? '🟢 راوند مفتوح' : '🔒 في انتظار الراوند التالي';
   const participantsCount = Object.keys(state.participants ?? {}).length;
@@ -71,7 +56,6 @@ function buildControlPanelButtons(paused) {
   );
 }
 
-// ── Public join/leave panel (posted once, by /event_start) ─────────
 function buildJoinPanelEmbed() {
   return new EmbedBuilder()
     .setColor(0x57f287)
@@ -94,7 +78,6 @@ function buildJoinPanelButtons() {
   );
 }
 
-// ── Round-start modal ──────────────────────────────────────────────
 function buildRoundModal() {
   const input = new TextInputBuilder()
     .setCustomId('answers')
@@ -109,7 +92,6 @@ function buildRoundModal() {
     .addComponents(new ActionRowBuilder().addComponents(input));
 }
 
-// ── Leaderboard / winner embeds ────────────────────────────────────
 function buildLeaderboardEmbed(leaderboard, title = '📊 الترتيب الحالي | Current Leaderboard') {
   const lines = leaderboard.length
     ? leaderboard.map((e, i) => `**#${i + 1}** <@${e.userId}> — ${e.points} نقطة`).join('\n')
@@ -140,11 +122,6 @@ function buildRulesEmbed(state) {
     );
 }
 
-// ── Locking helpers (per round — not for the whole event) ──────────
-// These toggle SendMessages on the "فعاليه" participant role specifically —
-// not @everyone — so only people currently in the event get locked/unlocked
-// each round. Staff/admins are unaffected either way (Administrator bypasses
-// channel overwrites, and the team role gets a standing allow at event start).
 async function lockStageChannel(channel, participantRoleId) {
   const target = (participantRoleId && channel.guild.roles.cache.get(participantRoleId)) || channel.guild.roles.everyone;
   await channel.permissionOverwrites.edit(target, { SendMessages: false }).catch(() => {});
@@ -155,15 +132,14 @@ async function unlockStageChannel(channel, participantRoleId) {
   await channel.permissionOverwrites.edit(target, { SendMessages: true }).catch(() => {});
 }
 
-// ── Join / Leave core logic (shared by buttons + /دخول /خروج) ──────
 async function joinEvent({ guild, member }) {
-  const state = events.getState();
+  const state = await events.getState();
   if (!state.active) return { ok: false, message: '❌ لا توجد فعالية نشطة حالياً.' };
 
   if (state.teamRoleId && member.roles.cache.has(state.teamRoleId)) {
     return { ok: false, message: '❌ أنت من فريق الفعالية، مش محتاج تسجل دخول.' };
   }
-  if (events.isParticipant(member.id)) {
+  if (await events.isParticipant(member.id)) {
     return { ok: false, message: '⚠️ انت مسجل بالفعل في الفعالية.' };
   }
   if (!state.participantRoleId) {
@@ -190,7 +166,7 @@ async function joinEvent({ guild, member }) {
     return { ok: false, message: '❌ حصل خطأ وأنا بحاول أعدل رولاتك، جرب تاني.' };
   }
 
-  events.addParticipant(member.id, { tag: member.user.tag, savedRoleIds });
+  await events.addParticipant(member.id, { tag: member.user.tag, savedRoleIds });
 
   return {
     ok: true,
@@ -200,10 +176,10 @@ async function joinEvent({ guild, member }) {
 }
 
 async function leaveEvent({ guild, member }) {
-  const state = events.getState();
+  const state = await events.getState();
   if (!state.active) return { ok: false, message: '❌ لا توجد فعالية نشطة حالياً.' };
 
-  const entry = events.removeParticipant(member.id);
+  const entry = await events.removeParticipant(member.id);
   if (!entry) {
     return { ok: false, message: '⚠️ انت مش مسجل في الفعالية أصلاً.' };
   }
@@ -223,7 +199,6 @@ async function leaveEvent({ guild, member }) {
   return { ok: true, message: '✅ خرجت من الفعالية، رجعتلك رولاتك القديمة.' };
 }
 
-// ── Button clicks ──────────────────────────────────────────────────
 async function handleEventButton(interaction) {
   if (interaction.customId === 'event_join') {
     const result = await joinEvent({ guild: interaction.guild, member: interaction.member });
@@ -239,12 +214,11 @@ async function handleEventButton(interaction) {
     return interaction.reply({ content: result.message, ephemeral: true });
   }
 
-  // Everything past this point is staff-only (control panel).
-  const state = events.getState();
+  const state = await events.getState();
   if (!state.active) {
     return interaction.reply({ content: '❌ لا توجد فعالية نشطة حالياً.', ephemeral: true });
   }
-  if (!isEventStaff(interaction)) {
+  if (!(await isEventStaff(interaction))) {
     return interaction.reply({ content: '❌ هذا الزر مخصص لفريق إدارة الفعالية فقط.', ephemeral: true });
   }
 
@@ -255,32 +229,29 @@ async function handleEventButton(interaction) {
   if (interaction.customId === 'event_break_toggle') {
     const stageChannel = interaction.guild.channels.cache.get(state.stageChannelId);
     if (!state.paused) {
-      // Going on break: lock the chat immediately, even mid-round.
       if (stageChannel) await lockStageChannel(stageChannel, state.participantRoleId);
-      events.closeRound();
-      const newState = events.setPaused(true);
+      await events.closeRound();
+      const newState = await events.setPaused(true);
       return interaction.update({ embeds: [buildControlPanelEmbed(newState)], components: [buildControlPanelButtons(true)] });
     } else {
-      // Resuming: chat stays locked until the host starts the next round.
-      const newState = events.setPaused(false);
+      const newState = await events.setPaused(false);
       return interaction.update({ embeds: [buildControlPanelEmbed(newState)], components: [buildControlPanelButtons(false)] });
     }
   }
 
   if (interaction.customId === 'event_end_confirm') {
-    return finishEvent(interaction);
+    return await finishEvent(interaction);
   }
 }
 
-// ── Modal submit: start the round ──────────────────────────────────
 async function handleEventModalSubmit(interaction) {
   if (interaction.customId !== 'event_round_modal') return;
 
-  const state = events.getState();
+  const state = await events.getState();
   if (!state.active) {
     return interaction.reply({ content: '❌ لا توجد فعالية نشطة حالياً.', ephemeral: true });
   }
-  if (!isEventStaff(interaction)) {
+  if (!(await isEventStaff(interaction))) {
     return interaction.reply({ content: '❌ هذا الإجراء مخصص لفريق إدارة الفعالية فقط.', ephemeral: true });
   }
 
@@ -296,7 +267,7 @@ async function handleEventModalSubmit(interaction) {
   }
 
   await unlockStageChannel(stageChannel, state.participantRoleId);
-  events.openRound(answers);
+  await events.openRound(answers);
 
   await stageChannel.send(
     '🎤 **السؤال جاهز! اكتبوا إجابتكم الآن**\n' + '🎤 **The question is ready! Type your answer now**'
@@ -305,14 +276,12 @@ async function handleEventModalSubmit(interaction) {
   return interaction.reply({ content: `✅ اتفتح الراوند بـ ${answers.length} صيغة إجابة مقبولة.`, ephemeral: true });
 }
 
-// ── Message answer-checking + profanity filter (from events/messageEvents.js) ──
 async function handleEventMessage(message) {
   if (message.author.bot) return;
-  const state = events.getState();
+  const state = await events.getState();
   if (!state.active) return;
   if (message.channelId !== state.stageChannelId) return;
 
-  // Keep the event chat clean regardless of whether a round is open.
   if (containsProfanity(message.content)) {
     await message.delete().catch(() => {});
     const warning = await message.channel
@@ -325,32 +294,27 @@ async function handleEventMessage(message) {
   if (!state.roundActive || state.paused) return;
   if (!isCorrectAnswer(message.content, state.currentAnswers)) return;
 
-  // Winner — lock the chat immediately so no one else can answer.
-  events.closeRound();
+  await events.closeRound();
   await lockStageChannel(message.channel, state.participantRoleId);
-  events.addPoint(message.author.id, message.author.tag);
-  const leaderboard = events.getLeaderboardSorted();
+  await events.addPoint(message.author.id, message.author.tag);
+  const leaderboard = await events.getLeaderboardSorted();
 
   await message.channel.send({ embeds: [buildWinnerEmbed(message.author)] });
   await message.channel.send({ embeds: [buildLeaderboardEmbed(leaderboard)] });
   await sendSeparator(message.channel);
 }
 
-// ── Ending the event ────────────────────────────────────────────────
 async function finishEvent(interaction) {
-  const state = events.getState();
+  const state = await events.getState();
   if (!state.active) {
     return interaction.reply({ content: '❌ لا توجد فعالية نشطة حالياً.', ephemeral: true });
   }
 
   await interaction.deferReply({ ephemeral: true });
 
-  const finalState = events.endEvent();
+  const finalState = await events.endEvent();
   const guild = interaction.guild;
 
-  // Remove every permission overwrite the event set up (@everyone deny,
-  // team-role allow, participant-role toggle) so the channel goes back to
-  // its normal state instead of staying locked for next time.
   const stageChannel = guild.channels.cache.get(finalState.stageChannelId);
   if (stageChannel) {
     await stageChannel.permissionOverwrites.delete(guild.roles.everyone).catch(() => {});
@@ -358,7 +322,6 @@ async function finishEvent(interaction) {
     if (finalState.participantRoleId) await stageChannel.permissionOverwrites.delete(finalState.participantRoleId).catch(() => {});
   }
 
-  // Restore every participant's original roles and pull the "فعاليه" role.
   const participantRole = finalState.participantRoleId ? guild.roles.cache.get(finalState.participantRoleId) : null;
   for (const [userId, entry] of Object.entries(finalState.participants ?? {})) {
     try {
@@ -374,7 +337,6 @@ async function finishEvent(interaction) {
     }
   }
 
-  // Also disable the join/leave panel so no one clicks it after the fact.
   if (finalState.joinChannelId && finalState.joinMessageId) {
     const joinChannel = guild.channels.cache.get(finalState.joinChannelId);
     const joinMessage = joinChannel ? await joinChannel.messages.fetch(finalState.joinMessageId).catch(() => null) : null;
