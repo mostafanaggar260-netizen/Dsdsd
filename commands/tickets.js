@@ -21,14 +21,12 @@ module.exports = [
     },
   },
   {
-    // Bonus command powered by the new database — lists every ticket
-    // that is currently open, pulled straight from data/tickets.json.
     data: new SlashCommandBuilder()
       .setName('tickets')
       .setDescription('List currently open tickets (Admin only)')
       .setDefaultMemberPermissions(PermissionFlagsBits.Administrator),
     async execute(interaction) {
-      const open = ticketsDb.listOpenTickets();
+      const open = await ticketsDb.listOpenTickets();
       if (open.length === 0) {
         return interaction.reply({ content: '📭 لا توجد تذاكر مفتوحة حالياً.', ephemeral: true });
       }
