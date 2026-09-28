@@ -1,8 +1,3 @@
-// Manual, admin-only trigger for the same auto-setup that runs at
-// startup. This is intentionally "one-time use": the first run creates
-// the channels, and every run after that just reports they already
-// exist instead of creating duplicates — nothing needs to be done to
-// "reset" it, it's just idempotent by design.
 const { SlashCommandBuilder, PermissionFlagsBits, EmbedBuilder } = require('discord.js');
 const { ensureLogChannels } = require('../utils/ensureLogChannels');
 
